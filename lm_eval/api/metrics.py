@@ -12,10 +12,55 @@ import sacrebleu
 
 from lm_eval.api.registry import register_aggregation, register_metric
 
+try:
+    import evaluate
+
+    rouge_evaluator = evaluate.load("rouge")
+except ModuleNotFoundError:
+    raise ImportError("evaluate is not installed")
 
 T = TypeVar("T")
 
 eval_logger = logging.getLogger(__name__)
+
+# >>>>>>>>
+def backup_stderr(arr):
+    if isinstance(arr, np.ndarray | list):
+        print(arr)
+        return np.std(arr)
+    else:
+        return "N/A"
+
+
+# <<<<<<<<
+
+
+# >>>>>>>>
+@register_aggregation("rouge1")
+def rouge1_agg(arr, aggregate=True):
+    predictions, references = zip(*arr)
+    return rouge_evaluator.compute(
+        predictions=predictions, references=references, use_aggregator=aggregate
+    )["rouge1"]
+
+
+@register_aggregation("rouge2")
+def rouge2_agg(arr, aggregate=True):
+    predictions, references = zip(*arr)
+    return rouge_evaluator.compute(
+        predictions=predictions, references=references, use_aggregator=aggregate
+    )["rouge2"]
+
+
+@register_aggregation("rougeL")
+def rougeL_agg(arr, aggregate=True):
+    predictions, references = zip(*arr)
+    return rouge_evaluator.compute(
+        predictions=predictions, references=references, use_aggregator=aggregate
+    )["rougeL"]
+
+
+# <<<<<<<<
 
 
 # Register Aggregations First
@@ -188,6 +233,29 @@ def acc_mutual_info_fn(items):  # This is a passthrough function
 def acc_bytes_fn(items):  # This is a passthrough function
     return items
 
+
+# >>>>>>>>
+@register_metric(
+    metric="rouge1",
+    higher_is_better=True,
+    output_type="generate_until",
+    aggregation="rouge1",
+)
+@register_metric(
+    metric="rouge2",
+    higher_is_better=True,
+    output_type="generate_until",
+    aggregation="rouge2",
+)
+@register_metric(
+    metric="rougeL",
+    higher_is_better=True,
+    output_type="generate_until",
+    aggregation="rougeL",
+)
+def rouge_score_fn(items):
+    return items  # This is a passthrough function
+# <<<<<<<<
 
 ### the code used in the `exact_match_hf_evaluate` function is ported from
 ### https://github.com/huggingface/evaluate/blob/main/metrics/exact_match/exact_match.py
@@ -572,7 +640,14 @@ def stderr_for_metric(
     if metric in bootstrappable:
         return lambda x: bootstrap_stderr(metric, x, iters=bootstrap_iters)
 
-    stderr = {mean: mean_stderr, acc_all: acc_all_stderr}
+    stderr = {
+        mean: mean_stderr, acc_all: acc_all_stderr,         
+        # >>>>>>>>
+        rouge1_agg: lambda x: mean_stderr(metric(x, aggregate=False)),
+        rouge2_agg: lambda x: mean_stderr(metric(x, aggregate=False)),
+        rougeL_agg: lambda x: mean_stderr(metric(x, aggregate=False)),
+        # <<<<<<<<
+    }
 
     return stderr.get(metric, None)
 

@@ -1573,3 +1573,32 @@ class HFLM(TemplateLM):
         if self.delta:
             model_info["delta_sha"] = get_model_sha(self.delta, self.revision)
         return model_info
+
+# >>>>>>>>
+@register_model("hf-bt")
+class HFLMBT(HFLM):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        from llmhalluc.extras.constant import BACKTRACK_TOKEN
+
+        self.tokenizer.add_special_tokens(
+            {"additional_special_tokens": [BACKTRACK_TOKEN]},
+            replace_additional_special_tokens=False,
+        )
+        self.backtrack_token_id = self.tokenizer.encode(BACKTRACK_TOKEN)[0]
+
+    def tok_decode(
+        self, tokens: list[int] | int, skip_special_tokens: bool = True
+    ) -> str:
+        if isinstance(tokens, int):
+            tokens = [tokens]
+        processed_tokens = []
+        for token in tokens:
+            if token == self.backtrack_token_id and len(processed_tokens) > 0:
+                processed_tokens = processed_tokens[:-1]
+            else:
+                processed_tokens.append(token)
+        return super().tok_decode(processed_tokens, skip_special_tokens)
+
+# <<<<<<<<
