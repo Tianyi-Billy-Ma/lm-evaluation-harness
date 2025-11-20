@@ -6,7 +6,7 @@ from lm_eval.api.registry import register_filter
 @register_filter("straight")
 class StraightFilter(Filter):
     def __init__(self, fallback: str = "[invalid]") -> None:
-        pass
+        self.fallback = fallback
 
     def apply(self, resps: list[list[str]], docs: list[dict]) -> list[list[str]]:
         def filter_set(inst):
