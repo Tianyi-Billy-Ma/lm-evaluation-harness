@@ -90,6 +90,15 @@ def setup_parser() -> argparse.ArgumentParser:
         type=try_parse_json,
         help="""Comma separated string or JSON formatted arguments for model, e.g. `pretrained=EleutherAI/pythia-160m,dtype=float32` or '{"pretrained":"EleutherAI/pythia-160m","dtype":"float32"}'""",
     )
+    # >>>>>>>>
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Optional YAML config file; CLI flags override values from this file.",
+    )
+    # <<<<<<<<
     parser.add_argument(
         "--num_fewshot",
         "-f",
@@ -295,9 +304,52 @@ def setup_parser() -> argparse.ArgumentParser:
 
 def parse_eval_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
     check_argument_types(parser)
-    return parser.parse_args()
+    args = parser.parse_args()
+    # >>>>>>>>
+    args = _apply_yaml_config(args, parser)
+    # <<<<<<<<
+    return args
 
 
+# >>>>>>>>
+def _apply_yaml_config(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> argparse.Namespace:
+    config_path = getattr(args, "config", None)
+    if not config_path:
+        return args
+
+    import yaml
+
+    cfg_path = Path(config_path).expanduser()
+    if not cfg_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    with cfg_path.open("r", encoding="utf-8") as handle:
+        config_data = yaml.safe_load(handle) or {}
+    if not isinstance(config_data, dict):
+        raise ValueError(
+            f"YAML config at {config_path} must be a mapping, got {type(config_data).__name__}"
+        )
+
+    defaults = {
+        action.dest: action.default for action in parser._actions if action.dest
+    }
+
+    for key, value in config_data.items():
+        if key == "config" or not hasattr(args, key):
+            continue
+
+        current_value = getattr(args, key)
+        default_value = defaults.get(key)
+
+        if current_value == default_value or current_value is None:
+            setattr(args, key, value)
+
+    return args
+
+
+# <<<<<<<<
 def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
     if not args:
         # we allow for args to be passed externally, else we parse them ourselves
@@ -370,7 +422,6 @@ def cli_evaluate(args: Union[argparse.Namespace, None] = None) -> None:
     # task_manager = TaskManager(
     #     include_path=args.include_path, metadata=metadata
     # )
-
 
     if "push_samples_to_hub" in evaluation_tracker_args and not args.log_samples:
         eval_logger.warning(
